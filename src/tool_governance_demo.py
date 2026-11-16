@@ -626,15 +626,15 @@ ORDERS = {
         "customer_email": "alice@example.com",
     }
 }
-# ===== TODO(任务 1)：新增模拟账户数据 =====
-# 在 ORDERS 后面新建 ACCOUNTS：Key 为 (tenant_id, account_id)，Value 为余额（float）。
-# 预设数据（来自作业任务 1）：
-#   ("tenant_a", "ACC-A-123456"): 100_000.0
-#   ("tenant_a", "ACC-A-654321"): 5_000.0
-#   ("tenant_a", "ACC-A-888888"): 20_000.0
-#   ("tenant_b", "ACC-B-111111"): 50_000.0
-# 注意：ACCOUNTS 是模块级可变状态，测试会按用例快照还原，所以必须写成可变的 dict。
-ACCOUNTS: dict[tuple[str, str], float] = {}
+
+# 模拟账户余额。Key 为 (tenant_id, account_id)，Value 为余额。
+# 模块级可变状态：测试会按用例快照还原，所以必须是普通可变 dict。
+ACCOUNTS: dict[tuple[str, str], float] = {
+    ("tenant_a", "ACC-A-123456"): 100_000.0,
+    ("tenant_a", "ACC-A-654321"): 5_000.0,
+    ("tenant_a", "ACC-A-888888"): 20_000.0,
+    ("tenant_b", "ACC-B-111111"): 50_000.0,
+}
 SIDE_EFFECTS = {"refund_executions": 0, "shell_executions": 0}
 
 
