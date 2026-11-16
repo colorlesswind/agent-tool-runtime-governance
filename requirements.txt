@@ -1,0 +1,15 @@
+# 项目依赖清单（Windows / Linux 通用）
+# 要求 Python >= 3.11（代码使用了 StrEnum 与 asyncio.timeout）
+# 安装：pip install -r requirements.txt
+
+# ---------- 运行时依赖：src/tool_governance_demo.py ----------
+# 参数校验（StrictArgs / BaseModel / ConfigDict / Field / ValidationError），必须是 Pydantic v2
+pydantic>=2.6,<3
+# 可选能力：run_deepseek_agent() 里的 AsyncOpenAI 流式 tool_calls（仅 --agent 模式需要）
+openai>=1.40,<3
+# run.py 读取 .env，把 DEEPSEEK_* 注入进程环境变量
+python-dotenv>=1.0
+
+# ---------- 测试依赖：test/test_tool_governance.py ----------
+# 测试用 functools + asyncio.run 自建 async 包装，无需 pytest-asyncio
+pytest>=8.0

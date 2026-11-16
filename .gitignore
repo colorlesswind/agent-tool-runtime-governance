@@ -1,0 +1,17 @@
+# 本地密钥
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 测试 / 工具缓存
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# 编辑器 / 本地环境配置（含 .vscode 内所有文件）
+.vscode/
