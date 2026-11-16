@@ -663,16 +663,21 @@ async def refund_precheck(raw_arguments: ArgsModel, context: ExecutionContext) -
         raise PolicyDenied("BUSINESS_RULE_DENIED", "退款金额超过可退金额")
 
 
-# ===== TODO(任务 3)：实现业务预检 =====
-# 异步函数 transfer_precheck(args, context)：只做判断，不改余额，
-# 按下面的顺序检查，不满足就 raise PolicyDenied（参考上面的 refund_precheck）：
-#   1. 金额落进教学拦截区间 50000 < amount <= 80000 → PolicyDenied("EXCEED_LIMIT", ...)
-#      这是教学专用规则，不是真实单笔限额：amount > 80000 的调用必须能过预检，
-#      留给任务 4 的超时分支使用。
-#   2. 从 ACCOUNTS 查 (context.tenant_id, from_account) 的余额，小于 amount
-#      → PolicyDenied("INSUFFICIENT_BALANCE", ...)
 async def transfer_precheck(raw_arguments: ArgsModel, context: ExecutionContext) -> None:
-    raise NotImplementedError("TODO(任务 3)：请实现 transfer_precheck")
+    """只读业务预检：一切拒绝都发生在 handler 产生副作用之前。"""
+
+    arguments = raw_arguments
+    assert isinstance(arguments, TransferArgs)
+    # 1. 教学专用拦截区间 (50000, 80000]：直接拒绝；> 80000 放过，留给任务 4 的超时演示。
+    if 50_000 < arguments.amount <= 80_000:
+        raise PolicyDenied("EXCEED_LIMIT", "单笔金额落在教学拦截区间内，已被拒绝")
+    # 2. 转出账户必须存在于当前租户下，不能把它并入"余额不足"而模糊语义。
+    debit_balance = ACCOUNTS.get((context.tenant_id, arguments.from_account))
+    if debit_balance is None:
+        raise PolicyDenied("DEBIT_ACCOUNT_NOT_FOUND", "转出账户不存在")
+    # 3. 余额不足同样在 handler 之前拒绝。
+    if debit_balance < arguments.amount:
+        raise PolicyDenied("INSUFFICIENT_BALANCE", "转出账户余额不足")
 
 
 async def create_refund_handler(
