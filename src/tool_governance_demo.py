@@ -111,14 +111,12 @@ class RunShellArgs(StrictArgs):
     command: str = Field(min_length=1, max_length=200)
 
 
-# ===== TODO(任务 2)：定义转账参数模型 =====
-# 新建 TransferArgs 类，继承 StrictArgs，三个字段：
-#   from_account: str   正则约束 ^ACC-[A-Z]-[0-9]{6}$
-#   to_account:   str   正则约束同上
-#   amount:       float gt=0 且 le=100_000
-# 参考上面的 CreateRefundArgs 怎么写 Field 约束。
 class TransferArgs(StrictArgs):
-    """TODO(任务 2)：补全 from_account / to_account / amount 三个字段。"""
+    """转账参数：账号格式、金额区间都在进入 handler 之前被 Schema 锁死。"""
+
+    from_account: str = Field(pattern=r"^ACC-[A-Z]-[0-9]{6}$")
+    to_account: str = Field(pattern=r"^ACC-[A-Z]-[0-9]{6}$")
+    amount: float = Field(gt=0, le=100_000)
 
 
 ArgsModel = GetOrderArgs | CreateRefundArgs | RunShellArgs | TransferArgs
