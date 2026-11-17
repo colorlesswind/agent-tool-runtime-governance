@@ -777,15 +777,19 @@ def build_tools() -> list[ToolDefinition]:
             handler=simulated_shell_handler,
             canonical_target=lambda args: str(getattr(args, "command")),
         ),
-        # ===== TODO(任务 5)：在这里注册 transfer 工具 =====
-        # 在 return 列表末尾追加一个 ToolDefinition，参考上面的 create_refund：
-        #   name="transfer"，description 自拟
-        #   parameters_model=TransferArgs
-        #   handler=transfer_handler，precheck=transfer_precheck
-        #   canonical_target 要能区分不同参数组合（审批摘要用它做参数绑定）
-        #   policy 参考同类写操作工具：Effect.WRITE、应当需要人工审批、
-        #   permission 用 "transfer:execute"、非幂等、max_retries=0；
-        #   timeout_seconds 必须小于任务 4 里超时演示的 3 秒。
+        ToolDefinition(
+            name="transfer",
+            description="在当前租户的两个账户之间转账，需要人工审批",
+            parameters_model=TransferArgs,
+            policy=ToolPolicy(Effect.WRITE, Risk.HIGH, "transfer:execute", True, 2.0, 0, False),
+            handler=transfer_handler,
+            precheck=transfer_precheck,
+            canonical_target=lambda args: (
+                f"{getattr(args, 'from_account')}:"
+                f"{getattr(args, 'to_account')}:"
+                f"{getattr(args, 'amount')}"
+            ),
+        ),
     ]
 
 
