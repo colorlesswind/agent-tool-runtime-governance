@@ -324,9 +324,12 @@ def _redact(value: Any) -> Any:
         return [_redact(item) for item in value]
     if isinstance(value, str):
         value = re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", "***@***", value)
-        # ===== TODO(任务 6)：在这里追加账号脱敏 =====
-        # 把 ACC-A-123456 变成 ACC-A-****3456（保留字符前缀与末 4 位）。
-        # 提示：re.sub 的替换既可以是字符串，也可以是函数，两种都行。
+        # 账号脱敏：ACC-A-123456 → ACC-A-****3456（保留 "ACC-X-" 前缀与末 4 位）。
+        value = re.sub(
+            r"ACC-[A-Z]-[0-9]{6}",
+            lambda match: f"{match.group(0)[:6]}****{match.group(0)[-4:]}",
+            value,
+        )
         return value
     return value
 
