@@ -698,20 +698,41 @@ async def create_refund_handler(
     }
 
 
-# ===== TODO(任务 4)：实现转账处理函数 =====
-# 异步函数 transfer_handler(tool_call_id, args, context)（参考上面的 create_refund_handler）：
-#   1. 超时模拟：amount > 80000 时先 await asyncio.sleep(3.0)，并且这一句必须在扣款之前，
-#      让框架的 asyncio.timeout 先掐断执行。
-#   2. 转入账户不存在 → raise PolicyDenied("ACCOUNT_NOT_FOUND", "转入账户不存在")，
-#      即 (context.tenant_id, to_account) 不在 ACCOUNTS 里就报错。
-#   3. 改余额：转出账户扣 amount，转入账户加 amount。
-#   4. 返回 dict：txn_id（tool_call_id 后 6 位）、from、to、amount、status="accepted"。
 async def transfer_handler(
     tool_call_id: str,
     raw_arguments: ArgsModel,
     context: ExecutionContext,
 ) -> Mapping[str, Any]:
-    raise NotImplementedError("TODO(任务 4)：请实现 transfer_handler")
+    arguments = raw_arguments
+    assert isinstance(arguments, TransferArgs)
+
+    # 1. 超时演示：慢调用必须发生在任何余额写入之前，
+    #    这样 asyncio.timeout 掐断执行时账上不会留下半边副作用。
+    if arguments.amount > 80_000:
+        await asyncio.sleep(3.0)
+
+    # 2. 所有校验都在写入之前一次性完成。
+    debit_key = (context.tenant_id, arguments.from_account)
+    credit_key = (context.tenant_id, arguments.to_account)
+    if credit_key not in ACCOUNTS:
+        raise PolicyDenied("ACCOUNT_NOT_FOUND", "转入账户不存在")
+    if debit_key not in ACCOUNTS:
+        raise PolicyDenied("DEBIT_ACCOUNT_NOT_FOUND", "转出账户不存在")
+    if ACCOUNTS[debit_key] < arguments.amount:
+        raise PolicyDenied("INSUFFICIENT_BALANCE", "转出账户余额不足")
+
+    # 3. 扣款与入账是紧邻的两步，中间不再有任何 await。
+    ACCOUNTS[debit_key] -= arguments.amount
+    ACCOUNTS[credit_key] += arguments.amount
+
+    # 4. 返回给调用方的投影，脱敏由 ToolRuntime.finalize 统一处理。
+    return {
+        "txn_id": tool_call_id[-6:],
+        "from": arguments.from_account,
+        "to": arguments.to_account,
+        "amount": arguments.amount,
+        "status": "accepted",
+    }
 
 
 async def simulated_shell_handler(
