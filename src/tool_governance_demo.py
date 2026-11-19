@@ -809,8 +809,8 @@ def base_context(**overrides: Any) -> ExecutionContext:
         user_id="u_100",
         tenant_id="tenant_a",
         mode=PermissionMode.DEFAULT,
-        permissions=frozenset({"order:read", "refund:create", "shell:run"}),
-        allowed_tools=frozenset({"get_order", "create_refund", "run_shell"}),
+        permissions=frozenset({"order:read", "refund:create", "shell:run", "transfer:execute"}),
+        allowed_tools=frozenset({"get_order", "create_refund", "run_shell", "transfer"}),
     )
     return replace(context, **overrides)
 
@@ -876,6 +876,39 @@ async def run_offline_demo() -> None:
         }, ensure_ascii=False, default=str))
     print(json.dumps({"side_effects": SIDE_EFFECTS, "audit_records": len(audit.records)}, ensure_ascii=False))
 
+    transfer_arguments = {
+        "from_account": "ACC-A-123456",
+        "to_account": "ACC-A-654321",
+        "amount": 100.0,
+    }
+    result_new = [
+        await runtime.invoke(ToolCall("call_07", "transfer", transfer_arguments), context)
+    ]
+    approvals.approve("approval_02", context, "transfer", transfer_arguments)
+    result_new.append(
+        await runtime.invoke(
+            ToolCall("call_07", "transfer", transfer_arguments),
+            replace(context, approval_id="approval_02"),
+        )
+    )
+    for result in result_new:
+        print(
+            json.dumps(
+                result.__dict__
+                if hasattr(result, "__dict__")
+                else {
+                    "tool_call_id": result.tool_call_id,
+                    "tool_name": result.tool_name,
+                    "ok": result.ok,
+                    "action": result.action,
+                    "code": result.code,
+                    "content": result.content,
+                },
+                ensure_ascii=False,
+                default=str,
+            )
+        )
+    
 
 async def run_deepseek_agent(user_input: str) -> None:
     """可选真实模型闭环；所有工具调用仍经过同一个 ToolRuntime.invoke。"""

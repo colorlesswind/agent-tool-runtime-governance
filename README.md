@@ -1,13 +1,8 @@
 # Agent Tool Runtime Governance
 
-一个"工具调用治理"教学项目：模型提交的任何工具调用都必须经过唯一的执行入口
-`ToolRuntime.invoke()`，依次走完 **Pydantic 参数校验 → 三态权限状态机 → 业务预检 →
-一次性参数绑定审批 → 超时与重试恢复 → 结果脱敏 → 审计追踪** 这条链路。
-
 ## 环境要求
 
 - Python **>= 3.11**（代码使用了 `StrEnum` 与 `asyncio.timeout`）
-- 已在 conda 环境 `agent-tool-runtime-governance`（Python 3.12.16）验证通过
 
 ## 1. 安装依赖
 
@@ -50,12 +45,6 @@ python run.py
 python src/tool_governance_demo.py
 ```
 
-预期末尾输出：
-
-```json
-{"side_effects": {"refund_executions": 1, "shell_executions": 0}, "audit_records": 8}
-```
-
 ### 3.2 真实模型闭环（需要 API Key）
 
 ```bash
@@ -77,7 +66,7 @@ python run.py --agent --input "请查询订单 ord_1001 的状态和可退金额
 ### 3.3 测试
 
 ```bash
-python -m pytest test/test_tool_governance.py -v -k "transfer"
+python -m pytest tests/test_tool_governance.py -v -k "transfer"
 ```
 
 `pytest.ini` 里配置了 `pythonpath = src`，所以无需手动设置 `PYTHONPATH`。
