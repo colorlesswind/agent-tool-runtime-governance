@@ -992,14 +992,128 @@ async def run_deepseek_agent(user_input: str) -> None:
 
     raise RuntimeError("Agent Loop 超过最大轮数 8")
 
+async def run_deepseek_agent_transfer(user_input: str) -> None:
+    """转账助手的真实模型闭环：transfer 的 CONFIRM 由这里补上人工审批后重放。
+
+    与 run_offline_demo 保持同一套语义：
+    1. 第一次 invoke 因为 requires_approval 返回 action=confirm；
+    2. 在 Agent Loop 里代为 approve（等价于用户点了"同意"）；
+    3. 携带 approval_id 用完全相同的 ToolCall 再 invoke 一次，才会真正产生副作用。
+    审批绑定 user/tenant/tool/参数摘要且一次性使用，所以重放必须原样传参。
+    """
+
+    from openai import AsyncOpenAI
+    from openai.types.chat import (
+        ChatCompletionFunctionToolParam,
+        ChatCompletionMessageParam,
+    )
+
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("请先设置环境变量 DEEPSEEK_API_KEY")
+
+    runtime, approval_store, audit_sink = build_runtime()
+    # 只把 transfer 暴露给模型；get_order 等工具在发现期就被过滤掉。
+    context = base_context(allowed_tools=frozenset({"transfer"}))
+    client = AsyncOpenAI(api_key=api_key, base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
+    model = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+    messages: list[dict[str, Any]] = [
+        {
+            "role": "system",
+            "content": (
+                "你是转账助手。只能使用 transfer 工具为用户办理转账；"
+                "不要编造账号、余额或交易结果。"
+            ),
+        },
+        {"role": "user", "content": user_input},
+    ]
+
+    for _round in range(8):
+        stream = await client.chat.completions.create(
+            model=model,
+            messages=cast(list[ChatCompletionMessageParam], messages),
+            tools=cast(list[ChatCompletionFunctionToolParam], runtime.model_tools(context)),
+            stream=True,
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+        text_parts: list[str] = []
+        pending_calls: dict[int, dict[str, Any]] = {}
+
+        async for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            if delta.content:
+                text_parts.append(delta.content)
+                print(delta.content, end="", flush=True)
+            for delta_call in delta.tool_calls or []:
+                current = pending_calls.setdefault(
+                    delta_call.index,
+                    {"id": "", "type": "function", "function": {"name": "", "arguments": ""}},
+                )
+                if delta_call.id:
+                    current["id"] = delta_call.id
+                if delta_call.function:
+                    if delta_call.function.name:
+                        current["function"]["name"] += delta_call.function.name
+                    if delta_call.function.arguments:
+                        current["function"]["arguments"] += delta_call.function.arguments
+
+        provider_calls = [pending_calls[index] for index in sorted(pending_calls)]
+        assistant_message: dict[str, Any] = {"role": "assistant", "content": "".join(text_parts)}
+        if provider_calls:
+            assistant_message["tool_calls"] = provider_calls
+        messages.append(assistant_message)
+
+        if not provider_calls:
+            print()
+            print(f"[audit] 共 {len(audit_sink.records)} 条审计记录")
+            return
+
+        if text_parts:
+            print()
+        for provider_call in provider_calls:
+            try:
+                raw_arguments = json.loads(provider_call["function"]["arguments"])
+            except json.JSONDecodeError:
+                raw_arguments = {"_invalid_json": provider_call["function"]["arguments"]}
+            tool_call = ToolCall(
+                provider_call["id"], provider_call["function"]["name"], raw_arguments
+            )
+            result = await runtime.invoke(tool_call, context)
+
+            # 高风险写操作第一次必然被拦成 confirm（APPROVAL_REQUIRED）。
+            # 这里因为demo教学项目，使用硬生成approve id的方法模拟用户approve
+            if result.action is DecisionAction.CONFIRM:
+                approval_id = f"approval_{tool_call.tool_call_id}"
+                approval_store.approve(approval_id, context, tool_call.name, raw_arguments)
+                print(f"[approval] {tool_call.name} 需要人工确认，已授权 {approval_id}")
+                result = await runtime.invoke(
+                    tool_call, replace(context, approval_id=approval_id)
+                )
+
+            print(f"[tool_result] {result.tool_name} {result.code}")
+            messages.append(result.to_tool_message())
+
+    raise RuntimeError("Agent Loop 超过最大轮数 8")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Python 工具治理与权限状态机演示")
     parser.add_argument("--agent", action="store_true", help="使用 DeepSeek 运行真实 Agent Loop")
+    parser.add_argument(
+        "--transfer",
+        action="store_true",
+        help="配合 --agent 运行转账助手（含人工审批重放）",
+    )
     parser.add_argument("--input", default="请查询订单 ord_1001 的状态和可退金额")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     cli_args = parse_args()
-    asyncio.run(run_deepseek_agent(cli_args.input) if cli_args.agent else run_offline_demo())
+    if not cli_args.agent:
+        asyncio.run(run_offline_demo())
+    elif cli_args.transfer:
+        asyncio.run(run_deepseek_agent_transfer(cli_args.input))
+    else:
+        asyncio.run(run_deepseek_agent(cli_args.input))
